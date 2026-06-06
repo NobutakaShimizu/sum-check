@@ -4,9 +4,10 @@ import MathInline from './Math.vue'
 import {
   buildProtocolInstance,
   createInitialState,
+  currentClaimEquationTex,
   DEFAULT_DIFFICULTY,
   difficultySettings,
-  difficultySummary,
+  exerciseDifficultyHint,
   DIFFICULTY_OPTIONS,
   evalPoly,
   generateRandomBase,
@@ -148,7 +149,7 @@ async function bootstrapExercise() {
 
   await pushProverMessage(
     protocolMessageTag('claim'),
-    `\\sum_{b \\in \\binset^n} f(b) = H = ${state.value.claimedSum}`,
+    currentClaimEquationTex(state.value, [], -1),
   )
   await appendProverPolynomial(0)
 }
@@ -216,7 +217,7 @@ watch(difficultyChoice, () => {
               {{ option.label }}
             </option>
           </select>
-          <div class="difficulty-hint">{{ difficultySummary(difficultyChoice) }}</div>
+          <div class="difficulty-hint">{{ exerciseDifficultyHint(difficultyChoice, state.numVars, state.field) }}</div>
         </label>
         <div class="meta-card compact">
           <div class="meta-label">Claimed value</div>

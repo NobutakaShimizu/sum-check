@@ -53,14 +53,39 @@ export const DEFAULT_FIELD = FIELD_PRIMES[0]
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
 export type DifficultySettings = {
-  field: number
-  numVars: number
+  fieldCandidates: readonly number[]
+  numVarsMin: number
+  numVarsMax: number
   minTerms: number
   maxTermsExtra: number
   /** Per-variable inclusion probability when sampling multilinear terms */
   termVarProb: number
   earlySlipProb: number
   proverStyle: 'silly' | 'sharp'
+}
+
+export function pickNumVars(difficulty: Difficulty): number {
+  const { numVarsMin, numVarsMax } = difficultySettings(difficulty)
+  const span = numVarsMax - numVarsMin + 1
+  return numVarsMin + Math.floor(Math.random() * span)
+}
+
+export function pickField(difficulty: Difficulty): number {
+  const candidates = difficultySettings(difficulty).fieldCandidates
+  return candidates[Math.floor(Math.random() * candidates.length)]
+}
+
+function formatVarCountLabel(min: number, max: number): string {
+  return min === max ? `${min} vars` : `${min}–${max} vars`
+}
+
+function formatFieldLabel(difficulty: Difficulty, field?: number): string {
+  if (field !== undefined)
+    return String(field)
+  const candidates = difficultySettings(difficulty).fieldCandidates
+  const min = candidates[0]
+  const max = candidates[candidates.length - 1]
+  return min === max ? String(min) : `${min}–${max}`
 }
 
 export const DIFFICULTY_OPTIONS = [
@@ -75,8 +100,9 @@ export function difficultySettings(difficulty: Difficulty): DifficultySettings {
   switch (difficulty) {
     case 'easy':
       return {
-        field: 5,
-        numVars: 2,
+        fieldCandidates: [5, 7, 11],
+        numVarsMin: 2,
+        numVarsMax: 3,
         minTerms: 2,
         maxTermsExtra: 1,
         termVarProb: 0.45,
@@ -85,8 +111,9 @@ export function difficultySettings(difficulty: Difficulty): DifficultySettings {
       }
     case 'medium':
       return {
-        field: 11,
-        numVars: 3,
+        fieldCandidates: [11, 13, 17],
+        numVarsMin: 4,
+        numVarsMax: 5,
         minTerms: 2,
         maxTermsExtra: 2,
         termVarProb: 0.5,
@@ -95,8 +122,9 @@ export function difficultySettings(difficulty: Difficulty): DifficultySettings {
       }
     case 'hard':
       return {
-        field: 19,
-        numVars: 4,
+        fieldCandidates: [13, 17, 19],
+        numVarsMin: 6,
+        numVarsMax: 6,
         minTerms: 3,
         maxTermsExtra: 3,
         termVarProb: 0.55,
@@ -124,12 +152,24 @@ export function termDegree(term: Term): number {
   return term.vars.length
 }
 
-export function difficultySummary(difficulty: Difficulty, honest = false): string {
+export function exerciseDifficultyHint(
+  difficulty: Difficulty,
+  numVars?: number,
+  field?: number,
+): string {
   const settings = difficultySettings(difficulty)
-  if (honest)
-    return `p = ${settings.field}, ${settings.numVars} vars, multilinear, honest prover`
-  const prover = settings.proverStyle === 'sharp' ? 'sharp prover' : 'silly prover'
-  return `p = ${settings.field}, ${settings.numVars} vars, multilinear, ${prover}`
+  const varsLabel = numVars !== undefined
+    ? `${numVars} vars`
+    : formatVarCountLabel(settings.numVarsMin, settings.numVarsMax)
+  return `p = ${formatFieldLabel(difficulty, field)}, ${varsLabel}`
+}
+
+export function difficultySummary(
+  difficulty: Difficulty,
+  numVars?: number,
+  field?: number,
+): string {
+  return exerciseDifficultyHint(difficulty, numVars, field)
 }
 
 export function proverPanelTitle(honest: boolean): string {
@@ -184,13 +224,38 @@ function formatVarPart(term: Term): string {
     .join('')
 }
 
+function normalizeTermVars(term: Term): Term {
+  return {
+    ...term,
+    vars: [...term.vars].sort((a, b) => a - b),
+  }
+}
+
+function compareTermOrder(a: Term, b: Term): number {
+  const aVars = normalizeTermVars(a).vars
+  const bVars = normalizeTermVars(b).vars
+  const maxLen = Math.max(aVars.length, bVars.length)
+
+  for (let i = 0; i < maxLen; i++) {
+    const av = aVars[i] ?? -1
+    const bv = bVars[i] ?? -1
+    if (av !== bv)
+      return av - bv
+  }
+
+  return 0
+}
+
 export function formatPoly(terms: Term[], field: number): string {
   if (terms.length === 0)
     return '0'
 
   const parts: string[] = []
+  const sorted = [...terms]
+    .map(normalizeTermVars)
+    .sort(compareTermOrder)
 
-  for (const t of terms) {
+  for (const t of sorted) {
     const c = mod(t.coeff, field)
     if (c === 0)
       continue
@@ -461,8 +526,8 @@ export function generateRandomBase(options?: {
 }): Omit<ProtocolInstance, 'claimedSum' | 'honest' | 'cheatMode' | 'cheatRound' | 'proverFlair'> {
   const difficulty = options?.difficulty ?? DEFAULT_DIFFICULTY
   const preset = difficultySettings(difficulty)
-  const field = normalizeField(options?.field ?? preset.field)
-  const numVars = options?.numVars ?? preset.numVars
+  const field = normalizeField(options?.field ?? pickField(difficulty))
+  const numVars = options?.numVars ?? pickNumVars(difficulty)
   const terms = randomPolyTerms(numVars, field, preset)
   const trueSum = computeClaimedSum(terms, numVars, field)
 
@@ -537,7 +602,7 @@ export type AnimStep = {
 }
 
 export function buildAnimSteps(state: SumCheckState): AnimStep[] {
-  const steps: AnimStep[] = [{ kind: 'claim' }]
+  const steps: AnimStep[] = []
   const checkFailed = state.finished && state.rounds.some(r => !r.checkPassed)
 
   for (const round of state.rounds) {
@@ -586,10 +651,6 @@ export function honestGiCoefficients(
   return { a: g0, b: mod(g1 - g0, state.field) }
 }
 
-export function honestClaimTex(state: SumCheckState): string {
-  return `\\sum_{b \\in \\binset^n} f(b) = H = ${state.trueSum}`
-}
-
 export function roundGiPolyTex(round: number, a: number, b: number, field: number): string {
   return `g_{${round}}(X) = ${a} + ${b}X \\pmod{${field}}`
 }
@@ -599,61 +660,149 @@ export function honestRoundPolyTex(state: SumCheckState, round: RoundState): str
   return roundGiPolyTex(round.round, a, b, state.field)
 }
 
+export function honestGiPolyTex(state: SumCheckState, roundNum: number): string {
+  const { a, b } = honestGiCoefficients(state, roundNum - 1)
+  return roundGiPolyTex(roundNum, a, b, state.field)
+}
+
 export function honestOracleTex(state: SumCheckState): string {
   const args = state.challenges.join(', ')
   const value = evalPoly(state.terms, state.challenges, state.field)
   return `f(${args}) = ${value}`
 }
 
-export type HonestProverMessage = {
-  tag: 'Claim' | 'Message'
-  tex: string
-  differs: boolean
+export type ProtocolClaimContext = {
+  fixedValues: number[]
+  claim: number
 }
 
-export function latestHonestProverMessage(
+export function getProtocolClaimContext(
   state: SumCheckState,
   steps: AnimStep[],
   animIndex: number,
-): HonestProverMessage | null {
-  let latest: AnimStep | null = null
+): ProtocolClaimContext {
+  let claim = state.claimedSum
+  const fixedValues: number[] = []
+
   for (let i = 0; i <= animIndex; i++) {
     const step = steps[i]
-    if (step.kind === 'claim' || step.kind === 'poly' || step.kind === 'oracle')
-      latest = step
+    if (step?.kind !== 'check' || step.round === undefined)
+      continue
+    const round = state.rounds.find(r => r.round === step.round)
+    if (!round?.checkPassed || round.newClaim === undefined)
+      continue
+    claim = round.newClaim
+    if (round.r !== undefined)
+      fixedValues.push(round.r)
   }
-  if (!latest)
+
+  return { fixedValues, claim }
+}
+
+function formatReducedPolyTex(
+  terms: Term[],
+  fixedValues: number[],
+  field: number,
+): string {
+  const fixedCount = fixedValues.length
+  const merged = new Map<string, number>()
+
+  for (const term of terms) {
+    let coeff = mod(term.coeff, field)
+    const freeVars: number[] = []
+
+    for (const v of term.vars) {
+      if (v < fixedCount)
+        coeff = mod(coeff * fixedValues[v], field)
+      else
+        freeVars.push(v)
+    }
+
+    if (coeff === 0)
+      continue
+
+    const key = freeVars.sort((a, b) => a - b).join(',')
+    merged.set(key, mod((merged.get(key) ?? 0) + coeff, field))
+  }
+
+  const reducedTerms: Term[] = [...merged.entries()]
+    .map(([key, coeff]) => ({
+      coeff,
+      vars: key ? key.split(',').map(Number) : [],
+    }))
+    .sort((a, b) => {
+      if (a.vars.length !== b.vars.length)
+        return a.vars.length - b.vars.length
+      for (let i = 0; i < a.vars.length; i++) {
+        if (a.vars[i] !== b.vars[i])
+          return a.vars[i] - b.vars[i]
+      }
+      return mod(a.coeff, field) - mod(b.coeff, field)
+    })
+
+  return formatPoly(reducedTerms, field)
+}
+
+function partialSumBoundsTex(fixedCount: number, numVars: number): string {
+  const remaining = numVars - fixedCount
+  if (remaining <= 0)
+    return ''
+
+  const varNames = Array.from({ length: remaining }, (_, j) => {
+    const idx = fixedCount + j
+    return VARIABLE_NAMES[idx] ?? `x_{${idx + 1}}`
+  })
+
+  return varNames.length === 1
+    ? `\\sum_{${varNames[0]} \\in \\binset}`
+    : `\\sum_{${varNames.join(',')} \\in \\binset}`
+}
+
+export function currentClaimEquationTex(
+  state: SumCheckState,
+  steps: AnimStep[],
+  animIndex: number,
+): string {
+  const { fixedValues, claim } = getProtocolClaimContext(state, steps, animIndex)
+  const remaining = state.numVars - fixedValues.length
+
+  if (remaining === 0) {
+    const args = fixedValues.join(', ')
+    return `f(${args}) = ${claim}`
+  }
+
+  const poly = formatReducedPolyTex(state.terms, fixedValues, state.field)
+  const sumTex = partialSumBoundsTex(fixedValues.length, state.numVars)
+  return `${sumTex} (${poly}) = ${claim}`
+}
+
+export function computePendingProverPoly(
+  state: SumCheckState,
+): { round: number; a: number; b: number } | null {
+  if (state.rounds.some(round => !round.checkPassed))
     return null
 
-  if (latest.kind === 'claim') {
-    return {
-      tag: 'Claim',
-      tex: honestClaimTex(state),
-      differs: mod(state.claimedSum, state.field) !== mod(state.trueSum, state.field),
-    }
-  }
+  const roundIndex = state.rounds.length
+  if (roundIndex >= state.numVars)
+    return null
 
-  if (latest.kind === 'poly' && latest.round !== undefined) {
-    const round = state.rounds.find(r => r.round === latest!.round)
-    if (!round)
-      return null
-    const { a, b } = honestGiCoefficients(state, round.round - 1)
-    return {
-      tag: 'Message',
-      tex: honestRoundPolyTex(state, round),
-      differs: a !== round.a || b !== round.b,
-    }
-  }
+  const { a, b } = computeRoundPolynomial(state, roundIndex)
+  return { round: roundIndex + 1, a, b }
+}
 
-  if (latest.kind === 'oracle') {
-    return {
-      tag: 'Message',
-      tex: honestOracleTex(state),
-      differs: false,
-    }
-  }
-
-  return null
+export function findRoundVerifierAnimEnd(
+  steps: AnimStep[],
+  roundNum: number,
+): { checkIndex: number; endIndex: number } | null {
+  const checkIndex = steps.findIndex(
+    step => step.kind === 'check' && step.round === roundNum,
+  )
+  const endIndex = steps.findIndex(
+    step => (step.kind === 'challenge' || step.kind === 'reject') && step.round === roundNum,
+  )
+  if (checkIndex < 0 || endIndex < 0)
+    return null
+  return { checkIndex, endIndex }
 }
 
 export function computeRoundPolynomial(

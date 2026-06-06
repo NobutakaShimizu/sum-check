@@ -11,6 +11,7 @@ import {
   difficultySettings,
   difficultySummary,
   DIFFICULTY_OPTIONS,
+  findRoundVerifierAnimEnd,
   generateRandomBase,
   instanceDescription,
   instanceKindLabel,
@@ -59,11 +60,6 @@ const instancePolyModTex = computed(() => {
   return `${instanceTex(base.value)} \\pmod{${base.value.field}}`
 })
 
-const claimTex = computed(() =>
-  state.value
-    ? `\\sum_{b \\in \\binset^n} f(b) = H = ${state.value.claimedSum}`
-    : '',
-)
 
 const activeInstanceDesc = computed(() => {
   if (!state.value)
@@ -137,16 +133,45 @@ function resetProtocol() {
   syncProtocolState()
 }
 
+async function animateVerifierRound(roundNum: number) {
+  if (!state.value)
+    return
+
+  const steps = buildAnimSteps(state.value)
+  const range = findRoundVerifierAnimEnd(steps, roundNum)
+  if (!range)
+    return
+
+  animStepIndex.value = Math.max(0, range.checkIndex - 1)
+  await animateToIndex(range.endIndex)
+}
+
 async function step() {
   if (!state.value || state.value.finished || animating.value)
     return
+  if (state.value.rounds.length >= state.value.numVars)
+    return
+
   const r = useManualR.value && manualR.value !== ''
     ? mod(Number(manualR.value), state.value.field)
     : undefined
   state.value = advanceRound(state.value, r)
   manualR.value = ''
-  const target = buildAnimSteps(state.value).length - 1
-  await animateToIndex(target)
+
+  const roundNum = state.value.rounds.at(-1)?.round
+  if (!roundNum)
+    return
+
+  await animateVerifierRound(roundNum)
+
+  if (
+    state.value.finished
+    && !state.value.rounds.some(round => !round.checkPassed)
+    && state.value.rounds.length === state.value.numVars
+  ) {
+    const steps = buildAnimSteps(state.value)
+    await animateToIndex(steps.length - 1)
+  }
 }
 
 async function runAll() {
@@ -158,13 +183,19 @@ async function runAll() {
   if (!state.value)
     return
 
-  let next = state.value
-  while (!next.finished)
-    next = advanceRound(next)
+  while (!state.value.finished) {
+    state.value = advanceRound(state.value)
 
-  state.value = next
-  animStepIndex.value = 0
-  await animateToIndex(buildAnimSteps(next).length - 1)
+    const roundNum = state.value.rounds.at(-1)?.round
+    if (!roundNum)
+      return
+
+    await animateVerifierRound(roundNum)
+  }
+
+  const steps = buildAnimSteps(state.value)
+  if (steps.some(step => step.kind === 'oracle'))
+    await animateToIndex(steps.length - 1)
 }
 
 watch(claimInput, () => {
@@ -211,7 +242,7 @@ regenerateInstance()
         </label>
 
         <span class="inline-stat difficulty-hint">
-          {{ difficultySummary(difficultyChoice, isYesInstance) }}
+          {{ difficultySummary(difficultyChoice, base?.numVars, base?.field) }}
         </span>
 
         <button type="button" class="btn icon-btn" title="Generate new instance" @click="regenerateInstance">
@@ -263,7 +294,6 @@ regenerateInstance()
           v-model:use-manual-r="useManualR"
           v-model:manual-r="manualR"
           :state="state"
-          :claim-tex="claimTex"
           :poly-tex="polyTex"
           :honest="state.honest"
           :anim-step-index="animStepIndex"

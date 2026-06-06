@@ -159,7 +159,7 @@ color: amber-light
 
 ::title::
 
-# Exercise: Sum-Check Chat (Multilinear)
+# Exercise: Sum-Check Chat
 
 ::content::
 

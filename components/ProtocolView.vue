@@ -3,11 +3,16 @@ import { computed, nextTick, ref, watch } from 'vue'
 import MathInline from './Math.vue'
 import {
   buildAnimSteps,
+  computePendingProverPoly,
+  currentClaimEquationTex as buildCurrentClaimEquationTex,
   DEFAULT_DIFFICULTY,
   difficultySettings,
   evalPoly,
+  honestGiCoefficients,
+  honestGiPolyTex,
+  honestOracleTex,
+  honestRoundPolyTex,
   isAnimStepVisible,
-  latestHonestProverMessage,
   mod,
   proverPanelTitle,
   protocolMessageTag,
@@ -19,7 +24,6 @@ import {
 
 const props = defineProps<{
   state: SumCheckState
-  claimTex: string
   polyTex: string
   honest: boolean
   animStepIndex: number
@@ -98,8 +102,20 @@ const currentClaimTex = computed(() => {
   return claim
 })
 
+const exchangeClaimTex = computed(() =>
+  buildCurrentClaimEquationTex(
+    props.state,
+    animSteps.value,
+    props.animStepIndex,
+  ),
+)
+
+const pendingProverPoly = computed(() => computePendingProverPoly(props.state))
+
 const showHint = computed(() =>
-  props.animStepIndex === 0 && props.state.rounds.length === 0,
+  pendingProverPoly.value !== null
+  && props.state.rounds.length === 0
+  && props.animStepIndex === 0,
 )
 
 const checkFailed = computed(() =>
@@ -111,10 +127,6 @@ const oracleFinished = computed(() =>
   props.state.finished
   && !checkFailed.value
   && props.state.rounds.length === props.state.numVars,
-)
-
-const honestProverMessage = computed(() =>
-  latestHonestProverMessage(props.state, animSteps.value, props.animStepIndex),
 )
 
 const proverNoteTex = computed(() => {
@@ -135,9 +147,23 @@ const showProverNote = computed(() =>
   !(props.hideSillyProverNote && proverIsSilly.value),
 )
 
-const proverMessageDir = computed(() =>
-  props.honest ? 'Honest Prover → Verifier' : 'Prover → Verifier',
-)
+const proverMessageDir = 'Verifier ← Prover'
+
+const verifierMessageDir = 'Prover ← Verifier'
+
+function roundPolyDiffers(round: RoundState): boolean {
+  const { a, b } = honestGiCoefficients(props.state, round.round - 1)
+  return a !== round.a || b !== round.b
+}
+
+function pendingPolyDiffers(pending: { round: number; a: number; b: number }): boolean {
+  const { a, b } = honestGiCoefficients(props.state, pending.round - 1)
+  return a !== pending.a || b !== pending.b
+}
+
+function oracleDiffers(): boolean {
+  return props.state.finished && props.state.finalCheck === false
+}
 
 function animClass(
   kind: AnimStepKind,
@@ -177,17 +203,6 @@ watch(
           <div class="state-label">Current claim</div>
           <MathInline :tex="currentClaimTex" />
         </div>
-        <div
-          v-if="honestProverMessage && !honest"
-          class="party-state honest-expected"
-          :class="honestProverMessage.differs ? 'differs' : 'matches'"
-        >
-          <div class="state-label">
-            Honest prover would send
-            <span class="honest-tag">{{ honestProverMessage.tag }}</span>
-          </div>
-          <MathInline :tex="honestProverMessage.tex" />
-        </div>
         <label class="manual-r">
           <span class="manual-r-head">
             <input v-model="useManualR" type="checkbox" :disabled="animating">
@@ -205,26 +220,13 @@ watch(
     </div>
 
     <div ref="exchangeEl" class="exchange">
-      <div v-if="showHint" class="hint">
-        Click <strong>Next round</strong> to begin the interaction.
+      <div class="exchange-claim">
+        <div class="exchange-claim-label">Current claim</div>
+        <MathInline :tex="exchangeClaimTex" />
       </div>
 
-      <div v-if="visible('claim')" class="msg-row to-verifier">
-        <div class="msg-track" :class="animClass('claim', undefined, 'rtl')">
-          <div class="arrow to-verifier" aria-hidden="true">
-            <span class="arrow-head">◀</span>
-            <span class="arrow-line" />
-          </div>
-          <div class="msg-card" :class="{ 'silly-prover': proverIsSilly }">
-            <div class="msg-meta">
-              <span class="msg-dir">{{ proverMessageDir }}</span>
-              <span class="msg-tag" :class="{ silly: proverIsSilly }">{{ protocolMessageTag('claim') }}</span>
-            </div>
-            <div class="msg-body">
-              <MathInline :tex="claimTex" />
-            </div>
-          </div>
-        </div>
+      <div v-if="showHint" class="hint">
+        Click <strong>Next round</strong> for Verifier to send <MathInline tex="r_i" />.
       </div>
 
       <template v-for="round in state.rounds" :key="round.round">
@@ -239,8 +241,8 @@ watch(
           </span>
         </div>
 
-        <div v-if="visible('poly', round.round)" class="msg-row to-verifier">
-          <div class="msg-track" :class="animClass('poly', round.round, 'rtl')">
+        <div class="msg-row to-verifier">
+          <div class="msg-track">
             <div class="arrow to-verifier" aria-hidden="true">
               <span class="arrow-head">◀</span>
               <span class="arrow-line" />
@@ -252,6 +254,10 @@ watch(
               </div>
               <div class="msg-body">
                 <MathInline :tex="roundPolyTex(round)" />
+              </div>
+              <div v-if="!honest && roundPolyDiffers(round)" class="msg-honest-compare differs">
+                <div class="compare-label">Honest prover would send</div>
+                <MathInline :tex="honestRoundPolyTex(state, round)" />
               </div>
             </div>
           </div>
@@ -283,7 +289,7 @@ watch(
           <div class="msg-track" :class="animClass('challenge', round.round, 'ltr')">
             <div class="msg-card">
               <div class="msg-meta">
-                <span class="msg-dir">Verifier → Prover</span>
+                <span class="msg-dir">{{ verifierMessageDir }}</span>
                 <span class="msg-tag">{{ protocolMessageTag('challenge') }}</span>
               </div>
               <div class="msg-body">
@@ -297,6 +303,28 @@ watch(
           </div>
         </div>
       </template>
+
+      <div v-if="pendingProverPoly" class="msg-row to-verifier pending-prover">
+        <div class="msg-track">
+          <div class="arrow to-verifier" aria-hidden="true">
+            <span class="arrow-head">◀</span>
+            <span class="arrow-line" />
+          </div>
+          <div class="msg-card" :class="{ 'silly-prover': proverIsSilly }">
+            <div class="msg-meta">
+              <span class="msg-dir">{{ proverMessageDir }}</span>
+              <span class="msg-tag" :class="{ silly: proverIsSilly }">{{ protocolMessageTag('message') }}</span>
+            </div>
+            <div class="msg-body">
+              <MathInline :tex="roundGiPolyTex(pendingProverPoly.round, pendingProverPoly.a, pendingProverPoly.b, state.field)" />
+            </div>
+            <div v-if="!honest && pendingPolyDiffers(pendingProverPoly)" class="msg-honest-compare differs">
+              <div class="compare-label">Honest prover would send</div>
+              <MathInline :tex="honestGiPolyTex(state, pendingProverPoly.round)" />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div
         v-if="checkFailed && visible('reject', state.rounds.at(-1)?.round)"
@@ -326,6 +354,10 @@ watch(
               </div>
               <div class="msg-body">
                 <MathInline :tex="finalValueTex()" />
+              </div>
+              <div v-if="!honest && oracleDiffers()" class="msg-honest-compare differs">
+                <div class="compare-label">Honest prover would send</div>
+                <MathInline :tex="honestOracleTex(state)" />
               </div>
             </div>
           </div>
@@ -438,32 +470,6 @@ watch(
   background: #f8fafc;
 }
 
-.party-state.honest-expected.matches {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-}
-
-.party-state.honest-expected.differs {
-  border-color: #fecaca;
-  background: #fef2f2;
-}
-
-.honest-tag {
-  margin-left: 0.25rem;
-  font-size: 0.58rem;
-  font-weight: 600;
-  padding: 0.05rem 0.3rem;
-  border-radius: 999px;
-  background: #ede9fe;
-  color: #6d28d9;
-  vertical-align: middle;
-}
-
-.party-state.honest-expected.differs .honest-tag {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
 .state-label {
   font-size: 0.64rem;
   color: #64748b;
@@ -519,6 +525,25 @@ watch(
   overscroll-behavior: contain;
   padding: 0.15rem 0.25rem 1rem;
   scroll-padding-bottom: 1rem;
+}
+
+.exchange-claim {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: center;
+  padding: 0.35rem 0.45rem 0.45rem;
+  background: linear-gradient(to bottom, #ffffff 75%, rgb(255 255 255 / 0));
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.exchange-claim-label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .exchange > * {
@@ -613,6 +638,31 @@ watch(
 
 .msg-body {
   overflow-x: auto;
+}
+
+.msg-honest-compare {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed #cbd5e1;
+  font-size: 0.68rem;
+}
+
+.msg-honest-compare.differs {
+  border-top-color: #fecaca;
+  background: #fef2f2;
+  margin-inline: -0.45rem;
+  margin-bottom: -0.35rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0 0 6px 6px;
+}
+
+.compare-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #991b1b;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.15rem;
 }
 
 .arrow {
