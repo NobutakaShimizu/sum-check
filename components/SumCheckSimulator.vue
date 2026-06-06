@@ -7,6 +7,7 @@ import {
   buildAnimSteps,
   buildProtocolInstance,
   createInitialState,
+  currentClaimEquationTex,
   DEFAULT_DIFFICULTY,
   difficultySettings,
   difficultySummary,
@@ -34,6 +35,7 @@ const difficultyChoice = ref<Difficulty>(DEFAULT_DIFFICULTY)
 const claimInput = ref<number | ''>('')
 const state = ref<SumCheckState | null>(null)
 const animStepIndex = ref(0)
+const claimPreviewIndex = ref<number | null>(null)
 const animating = ref(false)
 const protocolViewKey = ref(0)
 const revealedProverRound = ref(1)
@@ -63,6 +65,17 @@ const instancePolyModTex = computed(() => {
   return `${instanceTex(base.value)} \\pmod{${base.value.field}}`
 })
 
+
+const effectiveClaimIndex = computed(() =>
+  claimPreviewIndex.value ?? animStepIndex.value,
+)
+
+const currentClaimTex = computed(() => {
+  if (!state.value)
+    return ''
+  const steps = buildAnimSteps(state.value)
+  return currentClaimEquationTex(state.value, steps, effectiveClaimIndex.value)
+})
 
 const activeInstanceDesc = computed(() => {
   if (!state.value)
@@ -121,12 +134,14 @@ function syncProtocolState() {
   if (!base.value || claimInput.value === '') {
     state.value = null
     animStepIndex.value = 0
+    claimPreviewIndex.value = null
     return
   }
 
   const instance = buildProtocolInstance(base.value, Number(claimInput.value))
   state.value = createInitialState(instance)
   animStepIndex.value = 0
+  claimPreviewIndex.value = null
   revealedProverRound.value = 0
   manualR.value = ''
 }
@@ -139,6 +154,16 @@ function regenerateInstance() {
 
 function resetProtocol() {
   syncProtocolState()
+}
+
+function onSelectClaimIndex(index: number) {
+  if (animating.value)
+    return
+  claimPreviewIndex.value = claimPreviewIndex.value === index ? null : index
+}
+
+function clearClaimPreview() {
+  claimPreviewIndex.value = null
 }
 
 async function animateProverSend(roundNum: number, token: number) {
@@ -170,6 +195,8 @@ async function step() {
     return
   if (state.value.rounds.length >= state.value.numVars)
     return
+
+  clearClaimPreview()
 
   const token = sessionToken
   const nextRound = state.value.rounds.length + 1
@@ -214,6 +241,8 @@ async function runAll() {
   syncProtocolState()
   if (!state.value)
     return
+
+  clearClaimPreview()
 
   const token = sessionToken
 
@@ -317,23 +346,32 @@ regenerateInstance()
     </div>
 
     <div v-if="state" class="panel trace">
-      <div class="panel-title">
-        Sum-Check Protocol
-        <span class="instance-badge" :class="instanceKind">
-          {{ instanceKindLabel(state.honest) }}
-        </span>
-      </div>
+      <div class="trace-header">
+        <div class="trace-header-main">
+          <div class="panel-title">
+            Sum-Check Protocol
+            <span class="instance-badge" :class="instanceKind">
+              {{ instanceKindLabel(state.honest) }}
+            </span>
+          </div>
 
-      <div class="btn-row protocol-actions">
-        <button type="button" class="btn primary" :disabled="state.finished || animating" @click="step">
-          Next round
-        </button>
-        <button type="button" class="btn" :disabled="animating" @click="runAll">
-          Run all
-        </button>
-        <button type="button" class="btn ghost" :disabled="animating" @click="resetProtocol">
-          Reset
-        </button>
+          <div class="btn-row protocol-actions">
+            <button type="button" class="btn primary" :disabled="state.finished || animating" @click="step">
+              Next round
+            </button>
+            <button type="button" class="btn" :disabled="animating" @click="runAll">
+              Run all
+            </button>
+            <button type="button" class="btn ghost" :disabled="animating" @click="resetProtocol">
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <div class="current-claim" :class="{ preview: claimPreviewIndex !== null }">
+          <div class="current-claim-label">Current claim</div>
+          <MathInline :tex="currentClaimTex" />
+        </div>
       </div>
 
       <div class="trace-body">
@@ -345,9 +383,12 @@ regenerateInstance()
           :poly-tex="polyTex"
           :honest="state.honest"
           :anim-step-index="animStepIndex"
+          :claim-anim-index="effectiveClaimIndex"
+          :selected-claim-index="claimPreviewIndex"
           :animating="animating"
           :revealed-prover-round="revealedProverRound"
           hide-silly-prover-note
+          @select-claim-index="onSelectClaimIndex"
         />
       </div>
     </div>
@@ -492,6 +533,19 @@ regenerateInstance()
   width: 3.2rem;
 }
 
+.trace-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 0.4rem;
+  flex-shrink: 0;
+}
+
+.trace-header-main {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .panel-title {
   display: flex;
   align-items: center;
@@ -499,8 +553,33 @@ regenerateInstance()
   flex-wrap: wrap;
   font-weight: 700;
   color: #7b1fa2;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
   flex-shrink: 0;
+}
+
+.current-claim {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.current-claim.preview {
+  border-color: #f97316;
+  box-shadow: inset 0 0 0 1px rgb(249 115 22 / 25%);
+}
+
+.current-claim-label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: #c2410c;
+  margin-bottom: 0.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .instance-badge {
@@ -573,7 +652,6 @@ regenerateInstance()
 }
 
 .protocol-actions {
-  margin-bottom: 0.4rem;
   align-items: center;
   flex-shrink: 0;
 }

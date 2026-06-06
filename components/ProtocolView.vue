@@ -3,19 +3,16 @@ import { computed, nextTick, ref, watch } from 'vue'
 import MathInline from './Math.vue'
 import {
   buildAnimSteps,
+  claimAnimIndexForOracle,
+  claimAnimIndexForProverPoly,
+  claimAnimIndexForVerifierCheck,
   computePendingProverPoly,
-  currentClaimEquationTex as buildCurrentClaimEquationTex,
   DEFAULT_DIFFICULTY,
   difficultySettings,
   evalPoly,
-  honestGiCoefficients,
-  honestGiPolyTex,
-  honestOracleTex,
-  honestRoundPolyTex,
   isAnimStepVisible,
   mod,
   proverPanelTitle,
-  protocolMessageTag,
   roundGiPolyTex,
   type AnimStepKind,
   type RoundState,
@@ -27,9 +24,15 @@ const props = defineProps<{
   polyTex: string
   honest: boolean
   animStepIndex: number
+  claimAnimIndex: number
+  selectedClaimIndex: number | null
   animating?: boolean
   revealedProverRound: number
   hideSillyProverNote?: boolean
+}>()
+
+const emit = defineEmits<{
+  selectClaimIndex: [index: number]
 }>()
 
 const useManualR = defineModel<boolean>('useManualR', { default: false })
@@ -47,6 +50,14 @@ function visible(kind: AnimStepKind, round?: number): boolean {
 function isLatest(kind: AnimStepKind, round?: number): boolean {
   const latest = animSteps.value[props.animStepIndex]
   return latest?.kind === kind && latest?.round === round
+}
+
+function roundInState(roundNum: number): boolean {
+  return props.state.rounds.some(r => r.round === roundNum)
+}
+
+function roundHeaderVisibleInLoop(roundNum: number): boolean {
+  return roundNum <= props.revealedProverRound && roundInState(roundNum)
 }
 
 function roundPolyTex(round: RoundState): string {
@@ -93,7 +104,7 @@ const challengesTex = computed(() => {
 
 const currentClaimTex = computed(() => {
   let claim = `H = ${props.state.claimedSum}`
-  for (let i = 0; i <= props.animStepIndex; i++) {
+  for (let i = 0; i <= props.claimAnimIndex; i++) {
     const step = animSteps.value[i]
     if (step?.kind === 'check' && step.round !== undefined) {
       const round = props.state.rounds.find(r => r.round === step.round)
@@ -103,14 +114,6 @@ const currentClaimTex = computed(() => {
   }
   return claim
 })
-
-const exchangeClaimTex = computed(() =>
-  buildCurrentClaimEquationTex(
-    props.state,
-    animSteps.value,
-    props.animStepIndex,
-  ),
-)
 
 const pendingProverPoly = computed(() => computePendingProverPoly(props.state))
 
@@ -123,6 +126,13 @@ const visiblePendingProverPoly = computed(() => {
   if (pending.round <= props.state.rounds.length)
     return null
   return pending
+})
+
+const pendingRoundHeaderVisible = computed(() => {
+  const pending = visiblePendingProverPoly.value
+  if (!pending)
+    return false
+  return pending.round <= props.revealedProverRound && !roundInState(pending.round)
 })
 
 const showHint = computed(() =>
@@ -160,34 +170,49 @@ const showProverNote = computed(() =>
   !(props.hideSillyProverNote && proverIsSilly.value),
 )
 
-const proverMessageDir = 'Verifier ← Prover'
+const proverRoleLabel = 'Prover'
 
-const verifierMessageDir = 'Prover ← Verifier'
+const verifierRoleLabel = 'Verifier'
 
-function roundPolyDiffers(round: RoundState): boolean {
-  const { a, b } = honestGiCoefficients(props.state, round.round - 1)
-  return a !== round.a || b !== round.b
+function isClaimSelected(index: number): boolean {
+  return props.selectedClaimIndex === index
 }
 
-function pendingPolyDiffers(pending: { round: number; a: number; b: number }): boolean {
-  const { a, b } = honestGiCoefficients(props.state, pending.round - 1)
-  return a !== pending.a || b !== pending.b
+function selectClaimIndex(index: number) {
+  if (props.animating)
+    return
+  emit('selectClaimIndex', index)
 }
 
-function oracleDiffers(): boolean {
-  return props.state.finished && props.state.finalCheck === false
+function selectProverClaim(roundNum: number) {
+  selectClaimIndex(claimAnimIndexForProverPoly(animSteps.value, roundNum))
+}
+
+function selectVerifierClaim(roundNum: number) {
+  selectClaimIndex(claimAnimIndexForVerifierCheck(animSteps.value, roundNum))
+}
+
+function selectOracleClaim() {
+  selectClaimIndex(claimAnimIndexForOracle(animSteps.value))
+}
+
+function msgCardClaimClass(index: number): Record<string, boolean> {
+  return {
+    'msg-selectable': !props.animating,
+    'claim-selected': isClaimSelected(index),
+  }
 }
 
 function animClass(
   kind: AnimStepKind,
   round?: number,
-  direction: 'ltr' | 'rtl' | 'fade' | 'ttb' = 'fade',
+  style: 'from-right' | 'from-left' | 'fade' | 'ttb' = 'fade',
 ): Record<string, boolean> {
   if (!isLatest(kind, round))
     return {}
   return {
-    'anim-reveal': true,
-    [`anim-reveal-${direction}`]: true,
+    'anim-chat': true,
+    [`anim-chat-${style}`]: true,
   }
 }
 
@@ -241,20 +266,14 @@ watch(
     </div>
 
     <div ref="exchangeEl" class="exchange">
-      <div class="exchange-claim">
-        <div class="exchange-claim-label">Current claim</div>
-        <MathInline :tex="exchangeClaimTex" />
-      </div>
-
       <div v-if="showHint" class="hint">
         Click <strong>Next round</strong>: Prover sends <MathInline tex="g_i" />, then Verifier sends <MathInline tex="r_i" />.
       </div>
 
       <template v-for="round in state.rounds" :key="round.round">
         <div
-          v-if="visible('round-start', round.round)"
+          v-if="roundHeaderVisibleInLoop(round.round)"
           class="round-divider"
-          :class="animClass('round-start', round.round, 'fade')"
         >
           Round {{ round.round }}
           <span v-if="visible('check', round.round)" class="badge" :class="round.checkPassed ? 'ok' : 'ng'">
@@ -262,94 +281,123 @@ watch(
           </span>
         </div>
 
-        <div class="msg-row to-verifier">
-          <div class="msg-track">
-            <div class="arrow to-verifier" aria-hidden="true">
-              <span class="arrow-head">◀</span>
-              <span class="arrow-line" />
+        <div
+          v-if="visible('poly', round.round)"
+          class="chat-row prover"
+        >
+          <div
+            class="chat-bubble"
+            :class="[
+              { 'silly-prover': proverIsSilly },
+              msgCardClaimClass(claimAnimIndexForProverPoly(animSteps, round.round)),
+            ]"
+            role="button"
+            tabindex="0"
+            title="Click to show claim at this step"
+            @click="selectProverClaim(round.round)"
+            @keydown.enter.prevent="selectProverClaim(round.round)"
+            @keydown.space.prevent="selectProverClaim(round.round)"
+          >
+            <div class="chat-meta">
+              <span class="chat-role">{{ proverRoleLabel }}</span>
             </div>
-            <div class="msg-card" :class="{ 'silly-prover': proverIsSilly }">
-              <div class="msg-meta">
-                <span class="msg-dir">{{ proverMessageDir }}</span>
-                <span class="msg-tag" :class="{ silly: proverIsSilly }">{{ protocolMessageTag('message') }}</span>
-              </div>
-              <div class="msg-body">
-                <MathInline :tex="roundPolyTex(round)" />
-              </div>
-              <div v-if="!honest && roundPolyDiffers(round)" class="msg-honest-compare differs">
-                <div class="compare-label">Honest prover would send</div>
-                <MathInline :tex="honestRoundPolyTex(state, round)" />
-              </div>
+            <div class="chat-body">
+              <MathInline :tex="roundPolyTex(round)" />
             </div>
           </div>
         </div>
 
         <div
           v-if="visible('check', round.round)"
-          class="verifier-check"
-          :class="[round.checkPassed ? 'ok' : 'ng', animClass('check', round.round, 'ttb')]"
+          class="chat-row verifier thought-row"
         >
-          Verifier checks
-          <MathInline :tex="roundCheckTex(round)" />
-          {{ round.checkPassed ? '=' : '≠' }}
-          previous claim
-          <MathInline :tex="`${round.previousClaim}`" />
-          <template v-if="round.checkPassed">
-            and sets claim to
-            <MathInline :tex="roundNewClaimTex(round)" />
-          </template>
-          <template v-else>
-            and rejects.
-          </template>
+          <div
+            class="thought-cloud"
+            :class="round.checkPassed ? 'ok' : 'ng'"
+          >
+            <div class="thought-trail" aria-hidden="true">
+              <span class="thought-dot" />
+              <span class="thought-dot" />
+              <span class="thought-dot" />
+            </div>
+            <div
+              class="thought-cloud-body"
+              :class="animClass('check', round.round, 'from-left')"
+            >
+              <div class="thought-body">
+                Verifier checks
+                <MathInline :tex="roundCheckTex(round)" />
+                {{ round.checkPassed ? '=' : '≠' }}
+                previous claim
+                <MathInline :tex="`${round.previousClaim}`" />
+                <template v-if="round.checkPassed">
+                  and sets claim to
+                  <MathInline :tex="roundNewClaimTex(round)" />
+                </template>
+                <template v-else>
+                  and rejects.
+                </template>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div
           v-if="round.checkPassed && visible('challenge', round.round)"
-          class="msg-row to-prover"
+          class="chat-row verifier"
         >
-          <div class="msg-track" :class="animClass('challenge', round.round, 'ltr')">
-            <div class="msg-card">
-              <div class="msg-meta">
-                <span class="msg-dir">{{ verifierMessageDir }}</span>
-                <span class="msg-tag">{{ protocolMessageTag('challenge') }}</span>
-              </div>
-              <div class="msg-body">
-                <MathInline :tex="roundChallengeTex(round)" />
-              </div>
+          <div
+            class="chat-bubble"
+            :class="[
+              animClass('challenge', round.round, 'from-left'),
+              msgCardClaimClass(claimAnimIndexForVerifierCheck(animSteps, round.round)),
+            ]"
+            role="button"
+            tabindex="0"
+            title="Click to show claim at this step"
+            @click="selectVerifierClaim(round.round)"
+            @keydown.enter.prevent="selectVerifierClaim(round.round)"
+            @keydown.space.prevent="selectVerifierClaim(round.round)"
+          >
+            <div class="chat-meta">
+              <span class="chat-role">{{ verifierRoleLabel }}</span>
             </div>
-            <div class="arrow to-prover" aria-hidden="true">
-              <span class="arrow-line" />
-              <span class="arrow-head">▶</span>
+            <div class="chat-body">
+              <MathInline :tex="roundChallengeTex(round)" />
             </div>
           </div>
         </div>
       </template>
 
-      <div
-        v-if="visiblePendingProverPoly"
-        :key="`pending-${visiblePendingProverPoly.round}-${pendingRevealKey}`"
-        class="msg-row to-verifier pending-prover"
-      >
-        <div class="msg-track anim-reveal anim-reveal-rtl">
-          <div class="arrow to-verifier" aria-hidden="true">
-            <span class="arrow-head">◀</span>
-            <span class="arrow-line" />
-          </div>
-          <div class="msg-card" :class="{ 'silly-prover': proverIsSilly }">
-            <div class="msg-meta">
-              <span class="msg-dir">{{ proverMessageDir }}</span>
-              <span class="msg-tag" :class="{ silly: proverIsSilly }">{{ protocolMessageTag('message') }}</span>
+      <template v-if="visiblePendingProverPoly">
+        <div v-if="pendingRoundHeaderVisible" class="round-divider">
+          Round {{ visiblePendingProverPoly.round }}
+        </div>
+
+        <div class="chat-row prover pending-prover">
+          <div
+            :key="`pending-${visiblePendingProverPoly.round}-${pendingRevealKey}`"
+            class="chat-bubble anim-chat anim-chat-from-right"
+            :class="[
+              { 'silly-prover': proverIsSilly },
+              msgCardClaimClass(claimAnimIndexForProverPoly(animSteps, visiblePendingProverPoly.round)),
+            ]"
+            role="button"
+            tabindex="0"
+            title="Click to show claim at this step"
+            @click="selectProverClaim(visiblePendingProverPoly.round)"
+            @keydown.enter.prevent="selectProverClaim(visiblePendingProverPoly.round)"
+            @keydown.space.prevent="selectProverClaim(visiblePendingProverPoly.round)"
+          >
+            <div class="chat-meta">
+              <span class="chat-role">{{ proverRoleLabel }}</span>
             </div>
-            <div class="msg-body">
+            <div class="chat-body">
               <MathInline :tex="roundGiPolyTex(visiblePendingProverPoly.round, visiblePendingProverPoly.a, visiblePendingProverPoly.b, state.field)" />
-            </div>
-            <div v-if="!honest && pendingPolyDiffers(visiblePendingProverPoly)" class="msg-honest-compare differs">
-              <div class="compare-label">Honest prover would send</div>
-              <MathInline :tex="honestGiPolyTex(state, visiblePendingProverPoly.round)" />
             </div>
           </div>
         </div>
-      </div>
+      </template>
 
       <div
         v-if="checkFailed && visible('reject', state.rounds.at(-1)?.round)"
@@ -366,24 +414,26 @@ watch(
         class="final-block"
         :class="[state.finalCheck ? 'ok' : 'ng']"
       >
-        <div class="msg-row to-verifier">
-          <div class="msg-track" :class="animClass('oracle', undefined, 'rtl')">
-            <div class="arrow to-verifier" aria-hidden="true">
-              <span class="arrow-head">◀</span>
-              <span class="arrow-line" />
+        <div class="chat-row prover">
+          <div
+            class="chat-bubble"
+            :class="[
+              animClass('oracle', undefined, 'from-right'),
+              { 'silly-prover': proverIsSilly },
+              msgCardClaimClass(claimAnimIndexForOracle(animSteps)),
+            ]"
+            role="button"
+            tabindex="0"
+            title="Click to show claim at this step"
+            @click="selectOracleClaim()"
+            @keydown.enter.prevent="selectOracleClaim()"
+            @keydown.space.prevent="selectOracleClaim()"
+          >
+            <div class="chat-meta">
+              <span class="chat-role">{{ proverRoleLabel }}</span>
             </div>
-            <div class="msg-card" :class="{ 'silly-prover': proverIsSilly }">
-              <div class="msg-meta">
-                <span class="msg-dir">{{ proverMessageDir }}</span>
-                <span class="msg-tag" :class="{ silly: proverIsSilly }">{{ protocolMessageTag('message') }}</span>
-              </div>
-              <div class="msg-body">
-                <MathInline :tex="finalValueTex()" />
-              </div>
-              <div v-if="!honest && oracleDiffers()" class="msg-honest-compare differs">
-                <div class="compare-label">Honest prover would send</div>
-                <MathInline :tex="honestOracleTex(state)" />
-              </div>
+            <div class="chat-body">
+              <MathInline :tex="finalValueTex()" />
             </div>
           </div>
         </div>
@@ -425,8 +475,6 @@ watch(
 <style scoped>
 .protocol-view {
   --protocol-anim-ms: 650ms;
-  --protocol-anim-head-ms: 260ms;
-  --protocol-anim-head-delay: 480ms;
   display: grid;
   grid-template-columns: minmax(110px, 18%) 1fr minmax(110px, 18%);
   gap: 0.55rem;
@@ -551,27 +599,8 @@ watch(
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.15rem 0.25rem 1rem;
+  padding: 0.15rem 0.65rem 1.25rem;
   scroll-padding-bottom: 1rem;
-}
-
-.exchange-claim {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  text-align: center;
-  padding: 0.35rem 0.45rem 0.45rem;
-  background: linear-gradient(to bottom, #ffffff 75%, rgb(255 255 255 / 0));
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.exchange-claim-label {
-  font-size: 0.64rem;
-  font-weight: 600;
-  color: #64748b;
-  margin-bottom: 0.2rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .exchange > * {
@@ -595,49 +624,99 @@ watch(
   color: #475569;
 }
 
-.msg-row {
-  width: 100%;
-}
-
-.msg-track {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 0.25rem;
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.msg-row.to-prover .msg-track {
-  grid-template-columns: 1fr auto;
-}
-
-.msg-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  padding: 0.35rem 0.45rem;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
-}
-
-.msg-row.to-verifier .msg-card {
-  border-right: 3px solid #1976d2;
-}
-
-.msg-row.to-prover .msg-card {
-  border-left: 3px solid #7b1fa2;
-}
-
-.msg-meta {
+.chat-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem;
-  margin-bottom: 0.2rem;
+  width: 100%;
+  overflow: visible;
 }
 
-.msg-dir {
+.chat-row.prover {
+  justify-content: flex-end;
+  padding-left: 14%;
+  padding-right: 0.5rem;
+}
+
+.chat-row.verifier {
+  justify-content: flex-start;
+  padding-right: 14%;
+  padding-left: 0.5rem;
+}
+
+.chat-bubble {
+  position: relative;
+  max-width: 100%;
+  border-radius: 12px;
+  padding: 0.4rem 0.5rem;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
+  overflow: visible;
+}
+
+.chat-bubble.msg-selectable {
+  cursor: pointer;
+}
+
+.chat-bubble.msg-selectable:hover {
+  box-shadow: 0 2px 8px rgb(15 23 42 / 12%);
+}
+
+.chat-bubble.claim-selected {
+  outline: 2px solid #f97316;
+  outline-offset: 1px;
+}
+
+.chat-row.prover .chat-bubble {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-row.prover .chat-bubble::after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  left: auto;
+  bottom: auto;
+  margin-top: -7px;
+  width: 14px;
+  height: 14px;
+  background: #eff6ff;
+  border-right: 1px solid #bfdbfe;
+  border-top: 1px solid #bfdbfe;
+  transform: rotate(45deg);
+  border-top-right-radius: 2px;
+}
+
+.chat-row.verifier .chat-bubble {
+  background: #f3e8ff;
+  border: 1px solid #d8b4fe;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-row.verifier .chat-bubble::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  margin-top: -7px;
+  width: 14px;
+  height: 14px;
+  background: #f3e8ff;
+  border-left: 1px solid #d8b4fe;
+  border-bottom: 1px solid #d8b4fe;
+  transform: rotate(45deg);
+  border-bottom-left-radius: 2px;
+}
+
+.chat-meta {
+  margin-bottom: 0.15rem;
+}
+
+.chat-role {
   font-size: 0.62rem;
   font-weight: 700;
   color: #64748b;
@@ -645,143 +724,103 @@ watch(
   letter-spacing: 0.02em;
 }
 
-.msg-tag {
-  font-size: 0.6rem;
-  padding: 0.05rem 0.35rem;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #475569;
+.chat-row.prover .chat-role {
+  color: #1d4ed8;
 }
 
-.msg-tag.silly {
-  background: linear-gradient(135deg, #dbeafe, #fce7f3);
-  color: #1e40af;
-  font-weight: 600;
+.chat-row.verifier .chat-role {
+  color: #7e22ce;
 }
 
-.msg-card.silly-prover {
-  background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 70%, #fdf4ff 100%);
+.chat-bubble.silly-prover {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   border: 1px dashed rgb(25 118 210 / 35%);
 }
 
-.msg-body {
+.chat-bubble.silly-prover::after {
+  background: #dbeafe;
+  border-right-color: rgb(25 118 210 / 35%);
+  border-top-color: rgb(25 118 210 / 35%);
+}
+
+.chat-body {
   overflow-x: auto;
 }
 
-.msg-honest-compare {
-  margin-top: 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px dashed #cbd5e1;
-  font-size: 0.68rem;
+.chat-row.thought-row {
+  padding-left: 0.85rem;
+  padding-right: 12%;
 }
 
-.msg-honest-compare.differs {
-  border-top-color: #fecaca;
-  background: #fef2f2;
-  margin-inline: -0.45rem;
-  margin-bottom: -0.35rem;
-  padding: 0.35rem 0.45rem;
-  border-radius: 0 0 6px 6px;
-}
-
-.compare-label {
-  font-size: 0.58rem;
-  font-weight: 700;
-  color: #991b1b;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  margin-bottom: 0.15rem;
-}
-
-.arrow {
+.thought-cloud {
   display: flex;
   align-items: center;
-  color: #64748b;
-  min-width: 2.2rem;
+  gap: 0.2rem;
+  max-width: 100%;
+  overflow: visible;
 }
 
-.arrow.to-verifier {
-  flex-direction: row;
+.thought-cloud-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.45rem 0.6rem 0.5rem;
+  border-radius: 1.5rem 1.85rem 1.65rem 1.55rem / 1.55rem 1.75rem 1.45rem 1.85rem;
+  border: 1.5px solid transparent;
 }
 
-.arrow.to-prover {
-  flex-direction: row;
+.thought-trail {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
-.arrow-line {
-  flex: 1;
-  height: 2px;
-  background: currentcolor;
-  transform-origin: right center;
+.thought-trail .thought-dot {
+  display: block;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  flex-shrink: 0;
 }
 
-.msg-row.to-prover .arrow-line {
-  transform-origin: left center;
+.thought-trail .thought-dot:nth-child(1) {
+  width: 0.62rem;
+  height: 0.62rem;
 }
 
-.msg-row.to-verifier .msg-track.anim-reveal-rtl .arrow-line {
-  background: linear-gradient(to left, rgb(25 118 210 / 25%), #1976d2);
-  background-size: 220% 100%;
-  background-position: 0% 0;
-  animation: arrow-grad-rtl-to-verifier var(--protocol-anim-ms) ease-out forwards;
+.thought-trail .thought-dot:nth-child(2) {
+  width: 0.48rem;
+  height: 0.48rem;
 }
 
-.msg-row.to-prover .msg-track.anim-reveal-ltr .arrow-line {
-  background: linear-gradient(to right, rgb(123 31 162 / 25%), #7b1fa2);
-  background-size: 220% 100%;
-  background-position: 100% 0;
-  animation: arrow-grad-ltr-to-prover var(--protocol-anim-ms) ease-out forwards;
+.thought-trail .thought-dot:nth-child(3) {
+  width: 0.34rem;
+  height: 0.34rem;
 }
 
-.msg-row.to-verifier .msg-track.anim-reveal-rtl .arrow-head {
-  opacity: 0;
-  animation: arrow-head-in var(--protocol-anim-head-ms) ease-out var(--protocol-anim-head-delay) forwards;
+.thought-cloud.ok .thought-cloud-body,
+.thought-cloud.ok .thought-trail .thought-dot {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
 }
 
-.msg-row.to-prover .msg-track.anim-reveal-ltr .arrow-head {
-  opacity: 0;
-  animation: arrow-head-in var(--protocol-anim-head-ms) ease-out var(--protocol-anim-head-delay) forwards;
+.thought-cloud.ng .thought-cloud-body,
+.thought-cloud.ng .thought-trail .thought-dot {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
 }
 
-.arrow-head {
-  font-size: 0.72rem;
-  line-height: 1;
-}
-
-.msg-row.to-verifier .arrow {
-  color: #1976d2;
-}
-
-.msg-row.to-prover .arrow {
-  color: #7b1fa2;
-}
-
-.verifier-check {
-  margin: 0 1.8rem;
-  padding: 0.3rem 0.45rem;
-  border-radius: 6px;
-  font-size: 0.68rem;
-  line-height: 1.4;
+.thought-body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.2rem;
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  width: auto;
-}
-
-.verifier-check.ok {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
-}
-
-.verifier-check.ng {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  line-height: 1.4;
+  font-size: 0.68rem;
 }
 
 .badge {
@@ -831,138 +870,69 @@ watch(
   color: #991b1b;
 }
 
-.anim-reveal {
+.anim-chat {
   animation-duration: var(--protocol-anim-ms);
   animation-timing-function: ease-out;
-  animation-fill-mode: forwards;
+  animation-fill-mode: both;
 }
 
-.anim-reveal-ltr {
-  clip-path: inset(0 100% 0 0 round 8px);
-  animation-name: reveal-clip-ltr;
+.anim-chat-from-right {
+  animation-name: chat-in-prover;
 }
 
-.anim-reveal-rtl {
-  clip-path: inset(0 0 0 100% round 8px);
-  animation-name: reveal-clip-rtl;
+.anim-chat-from-left {
+  animation-name: chat-in-verifier;
 }
 
-.msg-row.to-prover .msg-track.anim-reveal-ltr::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to right,
-    transparent 0%,
-    rgb(123 31 162 / 22%) 45%,
-    rgb(123 31 162 / 38%) 55%,
-    transparent 100%
-  );
-  transform: translateX(-110%);
-  animation: reveal-glow-ltr var(--protocol-anim-ms) ease-out forwards;
-  pointer-events: none;
-  z-index: 1;
+.anim-chat-ttb {
+  animation-name: chat-in-system;
 }
 
-.msg-row.to-verifier .msg-track.anim-reveal-rtl::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to left,
-    transparent 0%,
-    rgb(25 118 210 / 22%) 45%,
-    rgb(25 118 210 / 38%) 55%,
-    transparent 100%
-  );
-  transform: translateX(110%);
-  animation: reveal-glow-rtl var(--protocol-anim-ms) ease-out forwards;
-  pointer-events: none;
-  z-index: 1;
+.anim-chat-fade {
+  animation-name: chat-fade-in;
 }
 
-.anim-reveal-ttb {
-  clip-path: inset(0 0 100% 0 round 6px);
-  animation-name: reveal-clip-ttb;
-}
-
-.anim-reveal-ttb::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgb(71 85 105 / 14%) 45%,
-    rgb(71 85 105 / 28%) 55%,
-    transparent 100%
-  );
-  transform: translateY(-110%);
-  animation: reveal-glow-ttb var(--protocol-anim-ms) ease-out forwards;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.anim-reveal-fade {
-  opacity: 0;
-  animation-name: reveal-fade-in;
-}
-
-@keyframes reveal-clip-ltr {
-  to {
-    clip-path: inset(0 0 0 0 round 8px);
+@keyframes chat-in-prover {
+  from {
+    opacity: 0;
+    transform: translateX(14px) scale(0.94);
   }
-}
 
-@keyframes reveal-clip-rtl {
-  to {
-    clip-path: inset(0 0 0 0 round 8px);
-  }
-}
-
-@keyframes reveal-clip-ttb {
-  to {
-    clip-path: inset(0 0 0 0 round 6px);
-  }
-}
-
-@keyframes reveal-glow-ltr {
-  to {
-    transform: translateX(110%);
-  }
-}
-
-@keyframes reveal-glow-rtl {
-  to {
-    transform: translateX(-110%);
-  }
-}
-
-@keyframes reveal-glow-ttb {
-  to {
-    transform: translateY(110%);
-  }
-}
-
-@keyframes reveal-fade-in {
   to {
     opacity: 1;
+    transform: translateX(0) scale(1);
   }
 }
 
-@keyframes arrow-grad-rtl-to-verifier {
+@keyframes chat-in-verifier {
+  from {
+    opacity: 0;
+    transform: translateX(-12px) scale(0.96);
+  }
+
   to {
-    background-position: 100% 0;
+    opacity: 1;
+    transform: translateX(0) scale(1);
   }
 }
 
-@keyframes arrow-grad-ltr-to-prover {
+@keyframes chat-in-system {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
   to {
-    background-position: 0% 0;
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
-@keyframes arrow-head-in {
+@keyframes chat-fade-in {
+  from {
+    opacity: 0;
+  }
+
   to {
     opacity: 1;
   }

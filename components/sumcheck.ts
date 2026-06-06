@@ -796,6 +796,38 @@ export function findRoundPolyIndex(steps: AnimStep[], roundNum: number): number 
   )
 }
 
+export function claimAnimIndexForProverPoly(
+  steps: AnimStep[],
+  roundNum: number,
+): number {
+  const polyIdx = findRoundPolyIndex(steps, roundNum)
+  if (polyIdx >= 0)
+    return polyIdx
+  if (roundNum <= 1)
+    return -1
+  return claimAnimIndexForVerifierCheck(steps, roundNum - 1)
+}
+
+export function claimAnimIndexForVerifierCheck(
+  steps: AnimStep[],
+  roundNum: number,
+): number {
+  const idx = steps.findIndex(
+    step => step.kind === 'check' && step.round === roundNum,
+  )
+  return idx >= 0 ? idx : -1
+}
+
+export function claimAnimIndexForOracle(steps: AnimStep[]): number {
+  const oracleIdx = steps.findIndex(step => step.kind === 'oracle')
+  if (oracleIdx >= 0)
+    return oracleIdx
+  const lastChallenge = [...steps].reverse().find(step => step.kind === 'challenge')
+  if (lastChallenge?.round !== undefined)
+    return claimAnimIndexForVerifierCheck(steps, lastChallenge.round)
+  return -1
+}
+
 export function findRoundVerifierAnimEnd(
   steps: AnimStep[],
   roundNum: number,
