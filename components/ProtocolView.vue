@@ -28,6 +28,7 @@ const props = defineProps<{
   honest: boolean
   animStepIndex: number
   animating?: boolean
+  revealedProverRound: number
   hideSillyProverNote?: boolean
 }>()
 
@@ -35,6 +36,7 @@ const useManualR = defineModel<boolean>('useManualR', { default: false })
 const manualR = defineModel<number | ''>('manualR', { default: '' })
 
 const exchangeEl = ref<HTMLElement | null>(null)
+const pendingRevealKey = ref(0)
 
 const animSteps = computed(() => buildAnimSteps(props.state))
 
@@ -112,9 +114,20 @@ const exchangeClaimTex = computed(() =>
 
 const pendingProverPoly = computed(() => computePendingProverPoly(props.state))
 
+const visiblePendingProverPoly = computed(() => {
+  const pending = pendingProverPoly.value
+  if (!pending)
+    return null
+  if (pending.round > props.revealedProverRound)
+    return null
+  if (pending.round <= props.state.rounds.length)
+    return null
+  return pending
+})
+
 const showHint = computed(() =>
-  pendingProverPoly.value !== null
-  && props.state.rounds.length === 0
+  props.state.rounds.length === 0
+  && props.revealedProverRound === 0
   && props.animStepIndex === 0,
 )
 
@@ -179,6 +192,14 @@ function animClass(
 }
 
 watch(
+  () => props.revealedProverRound,
+  (next, prev) => {
+    if (next > prev)
+      pendingRevealKey.value++
+  },
+)
+
+watch(
   () => props.animStepIndex,
   async () => {
     await nextTick()
@@ -226,7 +247,7 @@ watch(
       </div>
 
       <div v-if="showHint" class="hint">
-        Click <strong>Next round</strong> for Verifier to send <MathInline tex="r_i" />.
+        Click <strong>Next round</strong>: Prover sends <MathInline tex="g_i" />, then Verifier sends <MathInline tex="r_i" />.
       </div>
 
       <template v-for="round in state.rounds" :key="round.round">
@@ -304,8 +325,12 @@ watch(
         </div>
       </template>
 
-      <div v-if="pendingProverPoly" class="msg-row to-verifier pending-prover">
-        <div class="msg-track">
+      <div
+        v-if="visiblePendingProverPoly"
+        :key="`pending-${visiblePendingProverPoly.round}-${pendingRevealKey}`"
+        class="msg-row to-verifier pending-prover"
+      >
+        <div class="msg-track anim-reveal anim-reveal-rtl">
           <div class="arrow to-verifier" aria-hidden="true">
             <span class="arrow-head">◀</span>
             <span class="arrow-line" />
@@ -316,11 +341,11 @@ watch(
               <span class="msg-tag" :class="{ silly: proverIsSilly }">{{ protocolMessageTag('message') }}</span>
             </div>
             <div class="msg-body">
-              <MathInline :tex="roundGiPolyTex(pendingProverPoly.round, pendingProverPoly.a, pendingProverPoly.b, state.field)" />
+              <MathInline :tex="roundGiPolyTex(visiblePendingProverPoly.round, visiblePendingProverPoly.a, visiblePendingProverPoly.b, state.field)" />
             </div>
-            <div v-if="!honest && pendingPolyDiffers(pendingProverPoly)" class="msg-honest-compare differs">
+            <div v-if="!honest && pendingPolyDiffers(visiblePendingProverPoly)" class="msg-honest-compare differs">
               <div class="compare-label">Honest prover would send</div>
-              <MathInline :tex="honestGiPolyTex(state, pendingProverPoly.round)" />
+              <MathInline :tex="honestGiPolyTex(state, visiblePendingProverPoly.round)" />
             </div>
           </div>
         </div>
@@ -399,6 +424,9 @@ watch(
 
 <style scoped>
 .protocol-view {
+  --protocol-anim-ms: 650ms;
+  --protocol-anim-head-ms: 260ms;
+  --protocol-anim-head-delay: 480ms;
   display: grid;
   grid-template-columns: minmax(110px, 18%) 1fr minmax(110px, 18%);
   gap: 0.55rem;
@@ -695,24 +723,24 @@ watch(
   background: linear-gradient(to left, rgb(25 118 210 / 25%), #1976d2);
   background-size: 220% 100%;
   background-position: 0% 0;
-  animation: arrow-grad-rtl-to-verifier 0.46s ease-out forwards;
+  animation: arrow-grad-rtl-to-verifier var(--protocol-anim-ms) ease-out forwards;
 }
 
 .msg-row.to-prover .msg-track.anim-reveal-ltr .arrow-line {
   background: linear-gradient(to right, rgb(123 31 162 / 25%), #7b1fa2);
   background-size: 220% 100%;
   background-position: 100% 0;
-  animation: arrow-grad-ltr-to-prover 0.46s ease-out forwards;
+  animation: arrow-grad-ltr-to-prover var(--protocol-anim-ms) ease-out forwards;
 }
 
 .msg-row.to-verifier .msg-track.anim-reveal-rtl .arrow-head {
   opacity: 0;
-  animation: arrow-head-in 0.18s ease-out 0.34s forwards;
+  animation: arrow-head-in var(--protocol-anim-head-ms) ease-out var(--protocol-anim-head-delay) forwards;
 }
 
 .msg-row.to-prover .msg-track.anim-reveal-ltr .arrow-head {
   opacity: 0;
-  animation: arrow-head-in 0.18s ease-out 0.34s forwards;
+  animation: arrow-head-in var(--protocol-anim-head-ms) ease-out var(--protocol-anim-head-delay) forwards;
 }
 
 .arrow-head {
@@ -804,7 +832,7 @@ watch(
 }
 
 .anim-reveal {
-  animation-duration: 0.46s;
+  animation-duration: var(--protocol-anim-ms);
   animation-timing-function: ease-out;
   animation-fill-mode: forwards;
 }
@@ -831,7 +859,7 @@ watch(
     transparent 100%
   );
   transform: translateX(-110%);
-  animation: reveal-glow-ltr 0.46s ease-out forwards;
+  animation: reveal-glow-ltr var(--protocol-anim-ms) ease-out forwards;
   pointer-events: none;
   z-index: 1;
 }
@@ -848,7 +876,7 @@ watch(
     transparent 100%
   );
   transform: translateX(110%);
-  animation: reveal-glow-rtl 0.46s ease-out forwards;
+  animation: reveal-glow-rtl var(--protocol-anim-ms) ease-out forwards;
   pointer-events: none;
   z-index: 1;
 }
@@ -870,7 +898,7 @@ watch(
     transparent 100%
   );
   transform: translateY(-110%);
-  animation: reveal-glow-ttb 0.46s ease-out forwards;
+  animation: reveal-glow-ttb var(--protocol-anim-ms) ease-out forwards;
   pointer-events: none;
   z-index: 1;
 }

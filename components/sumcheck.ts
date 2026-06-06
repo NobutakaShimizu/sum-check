@@ -790,6 +790,12 @@ export function computePendingProverPoly(
   return { round: roundIndex + 1, a, b }
 }
 
+export function findRoundPolyIndex(steps: AnimStep[], roundNum: number): number {
+  return steps.findIndex(
+    step => step.kind === 'poly' && step.round === roundNum,
+  )
+}
+
 export function findRoundVerifierAnimEnd(
   steps: AnimStep[],
   roundNum: number,

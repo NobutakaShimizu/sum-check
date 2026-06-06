@@ -27,7 +27,7 @@ const props = withDefaults(defineProps<{
   compact: false,
 })
 
-const ANIM_STEP_MS = 420
+const ANIM_STEP_MS = 680
 
 const base = ref<ReturnType<typeof generateRandomBase> | null>(null)
 const difficultyChoice = ref<Difficulty>(DEFAULT_DIFFICULTY)
@@ -35,11 +35,14 @@ const claimInput = ref<number | ''>('')
 const state = ref<SumCheckState | null>(null)
 const animStepIndex = ref(0)
 const animating = ref(false)
+const protocolViewKey = ref(0)
+const revealedProverRound = ref(1)
 
 const manualR = ref<number | ''>('')
 const useManualR = ref(false)
 
 let animToken = 0
+let sessionToken = 0
 let animTimer: ReturnType<typeof setTimeout> | null = null
 
 const isYesInstance = computed(() => {
@@ -101,8 +104,10 @@ async function animateToIndex(targetIndex: number) {
   while (animStepIndex.value < targetIndex) {
     animStepIndex.value++
     const keepGoing = await sleep(ANIM_STEP_MS, token)
-    if (!keepGoing)
+    if (!keepGoing) {
+      animating.value = false
       return
+    }
   }
 
   if (token === animToken)
@@ -111,6 +116,8 @@ async function animateToIndex(targetIndex: number) {
 
 function syncProtocolState() {
   cancelAnimation()
+  sessionToken++
+  protocolViewKey.value++
   if (!base.value || claimInput.value === '') {
     state.value = null
     animStepIndex.value = 0
@@ -120,6 +127,7 @@ function syncProtocolState() {
   const instance = buildProtocolInstance(base.value, Number(claimInput.value))
   state.value = createInitialState(instance)
   animStepIndex.value = 0
+  revealedProverRound.value = 0
   manualR.value = ''
 }
 
@@ -133,8 +141,20 @@ function resetProtocol() {
   syncProtocolState()
 }
 
-async function animateVerifierRound(roundNum: number) {
-  if (!state.value)
+async function animateProverSend(roundNum: number, token: number) {
+  if (!state.value || token !== sessionToken)
+    return
+
+  revealedProverRound.value = roundNum
+  animating.value = true
+  const anim = ++animToken
+  await sleep(ANIM_STEP_MS, anim)
+  if (anim === animToken)
+    animating.value = false
+}
+
+async function animateVerifierRound(roundNum: number, token: number) {
+  if (!state.value || token !== sessionToken)
     return
 
   const steps = buildAnimSteps(state.value)
@@ -142,7 +162,6 @@ async function animateVerifierRound(roundNum: number) {
   if (!range)
     return
 
-  animStepIndex.value = Math.max(0, range.checkIndex - 1)
   await animateToIndex(range.endIndex)
 }
 
@@ -152,17 +171,31 @@ async function step() {
   if (state.value.rounds.length >= state.value.numVars)
     return
 
+  const token = sessionToken
+  const nextRound = state.value.rounds.length + 1
+
+  await animateProverSend(nextRound, token)
+
+  if (token !== sessionToken)
+    return
+
   const r = useManualR.value && manualR.value !== ''
     ? mod(Number(manualR.value), state.value.field)
     : undefined
   state.value = advanceRound(state.value, r)
   manualR.value = ''
 
+  if (token !== sessionToken)
+    return
+
   const roundNum = state.value.rounds.at(-1)?.round
   if (!roundNum)
     return
 
-  await animateVerifierRound(roundNum)
+  await animateVerifierRound(roundNum, token)
+
+  if (token !== sessionToken || !state.value)
+    return
 
   if (
     state.value.finished
@@ -178,20 +211,34 @@ async function runAll() {
   if (!state.value)
     return
 
-  cancelAnimation()
   syncProtocolState()
   if (!state.value)
     return
 
+  const token = sessionToken
+
   while (!state.value.finished) {
+    if (token !== sessionToken)
+      return
+
+    const nextRound = state.value.rounds.length + 1
+
+    await animateProverSend(nextRound, token)
+
+    if (token !== sessionToken)
+      return
+
     state.value = advanceRound(state.value)
 
     const roundNum = state.value.rounds.at(-1)?.round
     if (!roundNum)
       return
 
-    await animateVerifierRound(roundNum)
+    await animateVerifierRound(roundNum, token)
   }
+
+  if (token !== sessionToken || !state.value)
+    return
 
   const steps = buildAnimSteps(state.value)
   if (steps.some(step => step.kind === 'oracle'))
@@ -291,6 +338,7 @@ regenerateInstance()
 
       <div class="trace-body">
         <ProtocolView
+          :key="protocolViewKey"
           v-model:use-manual-r="useManualR"
           v-model:manual-r="manualR"
           :state="state"
@@ -298,6 +346,7 @@ regenerateInstance()
           :honest="state.honest"
           :anim-step-index="animStepIndex"
           :animating="animating"
+          :revealed-prover-round="revealedProverRound"
           hide-silly-prover-note
         />
       </div>
