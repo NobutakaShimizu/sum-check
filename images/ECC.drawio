@@ -1,0 +1,61 @@
+<mxfile host="65bd71144e">
+    <diagram id="-1Wxfmdx-QeeGgFQj5uh" name="ページ1">
+        <mxGraphModel dx="1336" dy="430" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="1" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="3" style="edgeStyle=none;html=1;" edge="1" parent="1" source="2">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="240" y="140" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="2" value="$$x$$" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="60" y="130" width="100" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" style="edgeStyle=none;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="4" target="7">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="320" y="200" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="4" value="$$y=\mathrm{Enc}(x)$$" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="240" y="130" width="160" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" value="通信時のノイズ" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="320" y="160" width="110" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" style="edgeStyle=none;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="7">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="160" y="219.9230769230769" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="7" value="$$\widetilde{y}$$" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="240" y="210" width="160" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+                    <mxGeometry x="260" y="210" width="20" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+                    <mxGeometry x="340" y="210" width="20" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="11" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+                    <mxGeometry x="370" y="210" width="20" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="いくつかの要素が変化する" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="310" y="240" width="170" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="13" value="$$\mathrm{Enc}$$" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="140" y="110" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" value="$$x$$" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="60" y="210" width="100" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="16" value="$$\mathrm{Dec}$$" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="140" y="190" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="17" value="\(\mathrm{dist}(y,\widetilde{y})\) が小さければ&lt;br&gt;\(\widetilde{y}\) から \(x\) が復元できる." style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="-10" y="243" width="260" height="40" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

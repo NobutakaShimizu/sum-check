@@ -1,0 +1,19 @@
+{
+  "name": "sum-check",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "slidev build",
+    "build:pages": "slidev build --base /sum-check/",
+    "dev": "slidev --open",
+    "export": "slidev export"
+  },
+  "dependencies": {
+    "@slidev/cli": "^51.5.0",
+    "@slidev/theme-default": "latest",
+    "@slidev/theme-seriph": "latest",
+    "slidev-addon-rabbit": "^0.4.0",
+    "slidev-theme-neversink": "latest",
+    "vue": "^3.5.13"
+  }
+}

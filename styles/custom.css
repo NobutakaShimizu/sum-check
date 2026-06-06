@@ -1,0 +1,296 @@
+.theorem {
+  border: 2px solid #d32f2f;
+  background-color: #ffebee;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.theorem::before {
+  content: "Theorem";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #d32f2f;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.definition {
+  border: 2px solid #1976d2;
+  background-color: #e3f2fd;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.definition::before {
+  content: "Definition";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #1976d2;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.lemma {
+  border: 2px solid #388e3c;
+  background-color: #e8f5e9;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.lemma::before {
+  content: "Lemma";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #388e3c;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.corollary {
+  border: 2px solid #7b1fa2;
+  background-color: #f3e5f5;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.corollary::before {
+  content: "Corollary";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #7b1fa2;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.proposition {
+  border: 2px solid #f57c00;
+  background-color: #fff3e0;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.proposition::before {
+  content: "Proposition";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #f57c00;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.remark {
+  border: 2px solid #455a64;
+  background-color: #eceff1;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.remark::before {
+  content: "Remark";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #455a64;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.remark::after {
+  content: "🧐";
+  position: absolute;
+  top: 10px;
+  left: 55px;
+  color: #795548;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+.question {
+  border: 2px solid #673ab7;
+  background-color: #ede7f6;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.question::before {
+  content: "Question";
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #673ab7;
+  color: white;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  border-radius: 6px 0 8px 0;
+}
+
+.caption {
+  @apply text-center text-sm text-gray-500 mt-2;
+}
+
+.reference {
+  border: 2px solid #607d8b;
+  background-color: #eceff1;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.reference::before {
+  content: "Reference";
+  position: absolute;
+  top: 10px;
+  left: 15px;
+  color: #607d8b;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+.reference::after {
+  content: "📚";
+  position: absolute;
+  top: 10px;
+  left: 75px;
+  color: #607d8b;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+.cite-reference {
+  display: inline-block;
+  font-size: 0.9em;
+  color: #1976d2;
+  background-color: transparent;
+  padding: 0;
+  font-weight: 500;
+  border: none;
+  border-left: none !important;
+  border-bottom: none;
+  margin: 0 0.2em;
+  text-decoration: none;
+  box-shadow: none;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.cite-reference::before,
+.cite-reference::after {
+  display: inline;
+  content: "";
+}
+
+a.cite-reference {
+  border: none !important;
+  border-bottom: none !important;
+  text-decoration: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-bottom: 1px solid rgba(25, 118, 210, 0.3) !important;
+}
+
+a.cite-reference:hover {
+  background-color: rgba(25, 118, 210, 0.1);
+}
+
+.topic-box {
+  border: 2px solid #ff9800;
+  background-color: #fff3e0;
+  padding: 10px 15px 0;
+  margin: 20px 0 1px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.example {
+  border: 2px solid #009688;
+  background-color: #e0f2f1;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.example::before {
+  content: "Example";
+  position: absolute;
+  top: 10px;
+  left: 15px;
+  color: #009688;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+.example::after {
+  content: "💡";
+  position: absolute;
+  top: 10px;
+  left: 85px;
+  color: #009688;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+strong {
+  color: #c2185b;  /* 濃いマゼンタ色 */
+}
+
+.claim {
+  border: 2px solid #e65100;
+  background-color: #fff3e0;
+  padding: 35px 15px 4px;
+  margin: 10px 0 2px;
+  position: relative;
+  border-radius: 8px;
+}
+
+.claim::before {
+  content: "主張";
+  position: absolute;
+  top: 10px;
+  left: 15px;
+  color: #e65100;
+  font-weight: bold;
+  font-size: 0.95em;
+}
+
+.claim::after {
+  content: "🔎";
+  position: absolute;
+  top: 10px;
+  left: 55px;
+  color: #e65100;
+  font-weight: bold;
+  font-size: 0.95em;
+} 
